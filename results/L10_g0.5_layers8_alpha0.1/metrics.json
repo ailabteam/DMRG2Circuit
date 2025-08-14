@@ -1,0 +1,19 @@
+{
+    "L": 10,
+    "g": 0.5,
+    "num_layers": 8,
+    "alpha": 0.1,
+    "final_hybrid_cost": 0.0012087792631698905,
+    "final_global_fidelity": 0.99104729044254,
+    "depth": 105,
+    "total_gates": 347,
+    "num_cnots": 80,
+    "ops_count": {
+        "rx": 80,
+        "ry": 80,
+        "rz": 80,
+        "cx": 80,
+        "barrier": 17,
+        "h": 10
+    }
+}
