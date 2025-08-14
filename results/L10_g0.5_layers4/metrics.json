@@ -1,0 +1,18 @@
+{
+    "L": 10,
+    "g": 0.5,
+    "num_layers": 4,
+    "final_local_cost": 7.260081136416688e-07,
+    "final_global_fidelity": 0.0002538650592136651,
+    "depth": 53,
+    "total_gates": 179,
+    "num_cnots": 40,
+    "ops_count": {
+        "rx": 40,
+        "ry": 40,
+        "rz": 40,
+        "cx": 40,
+        "h": 10,
+        "barrier": 9
+    }
+}
