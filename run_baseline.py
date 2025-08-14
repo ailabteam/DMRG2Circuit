@@ -2,73 +2,127 @@ import tenpy
 import tenpy.tools.hdf5_io as hdf5_io
 import numpy as np
 from qiskit import QuantumCircuit
+import time
+import os
+import json
 
+# ==============================================================================
+# PHẦN 1: LOAD DỮ LIỆU MỤC TIÊU (TENPY)
+# ==============================================================================
 def get_target_statevector(filename):
     """
     Đọc file MPS và chuyển nó thành một statevector đầy đủ.
     """
-    print(f"Đang đọc và chuyển đổi MPS từ file: '{filename}'")
+    print(f"  Đang đọc và chuyển đổi MPS từ file: '{filename}'")
     psi_mps = hdf5_io.load(filename)["psi"]
     psi_mps.canonical_form()
     full_tensor_array = psi_mps.get_theta(0, psi_mps.L)
     target_state = full_tensor_array.to_ndarray().flatten()
-    print(f"Đã chuyển đổi MPS thành statevector. Shape: {target_state.shape}")
+    print(f"  Đã chuyển đổi MPS thành statevector. Shape: {target_state.shape}")
     return target_state
 
-def run_qiskit_baseline(statevector_np):
+# ==============================================================================
+# PHẦN 2: HÀM CHẠY THÍ NGHIỆM BASELINE
+# ==============================================================================
+def run_qiskit_baseline(L, J, g):
     """
-    Xây dựng một mạch lượng tử từ một statevector bằng phương pháp Isometry.
+    Chạy thí nghiệm baseline hoàn chỉnh cho một bộ tham số và lưu kết quả.
     """
-    print("\nBắt đầu xây dựng mạch baseline bằng Qiskit Isometry...")
+    exp_name = f"L{L}_g{g}_baseline"
+    print("\n" + "#"*80 + f"\n# Baseline Experiment: {exp_name} #" + "\n" + "#"*80)
+
+    results_dir = f"results/{exp_name}"; os.makedirs(results_dir, exist_ok=True)
     
-    num_qubits = int(np.log2(len(statevector_np)))
+    # --- Chuẩn bị dữ liệu ---
+    mps_filename = f"data/gs_ising_L{L}_J{J}_g{g}.h5"
+    if not os.path.exists(mps_filename):
+        print(f"Lỗi: File dữ liệu '{mps_filename}' không tồn tại. Hãy chạy main_experiment.py trước để tạo nó.")
+        return
+
+    target_sv = get_target_statevector(mps_filename)
+    
+    print("\nBắt đầu xây dựng và phân rã mạch baseline (quá trình này có thể rất lâu)...")
+    start_time = time.time()
     
     try:
-        # --- QUY TRÌNH MỚI ---
-        # 1. Chuẩn hóa statevector
-        statevector_np = statevector_np / np.linalg.norm(statevector_np)
+        # --- Quy trình xây dựng mạch ---
+        num_qubits = L
+        statevector_np = target_sv / np.linalg.norm(target_sv)
         
-        # 2. Xây dựng ma trận Unitary từ statevector
-        # Đây là một thủ thuật toán học tiêu chuẩn
         dim = 2**num_qubits
         unitary_matrix = np.zeros((dim, dim), dtype=complex)
         unitary_matrix[:, 0] = statevector_np
+        q, _ = np.linalg.qr(unitary_matrix)
         
-        # Dùng phân rã QR để hoàn thiện ma trận thành unitary
-        q, r = np.linalg.qr(unitary_matrix)
+        qc = QuantumCircuit(num_qubits)
+        qc.unitary(q, range(num_qubits), label=f'StatePrep_L{L}')
         
-        # 3. Tạo một mạch rỗng và khởi tạo nó bằng ma trận unitary
-        baseline_circuit = QuantumCircuit(num_qubits)
-        baseline_circuit.unitary(q, range(num_qubits), label='State Prep')
+        # Phân rã mạch
+        decomposed_qc = qc.decompose()
         
-        # 4. Phân rã mạch thành các cổng cơ bản
-        baseline_circuit = baseline_circuit.decompose()
-        
-        print("Xây dựng và phân rã mạch thành công.")
     except Exception as e:
-        print(f"\n[LỖI] Qiskit không thể xây dựng mạch từ statevector này.")
-        print(f"Lỗi chi tiết: {e}")
-        return
-
-    # Phân tích mạch
-    print("\n--- Phân tích Mạch Baseline ---")
-    
-    depth = baseline_circuit.depth()
-    print(f"Độ sâu (Depth): {depth}")
-
-    ops_count = baseline_circuit.count_ops()
-    print("Thống kê số lượng cổng:")
-    for op, count in ops_count.items():
-        print(f"  - {op}: {count}")
+        print(f"LỖI trong quá trình xây dựng baseline: {e}"); return
         
-    num_cnots = ops_count.get('cx', 0)
-    print(f"\nTổng số cổng CNOT: {num_cnots}")
+    end_time = time.time()
+    run_time = end_time - start_time
+    print(f"Xây dựng và phân rã hoàn tất sau {run_time:.2f} giây.")
+
+    # --- Phân tích và Lưu kết quả ---
+    print("\nĐang phân tích và lưu kết quả...")
     
-    return depth, num_cnots
+    metrics = {
+        "method": "Baseline (Qiskit Isometry)",
+        "L": L, "g": g,
+        "final_global_fidelity": 1.0,
+        "depth": decomposed_qc.depth(),
+        "num_cnots": decomposed_qc.count_ops().get('cx', 0),
+        "total_gates": sum(decomposed_qc.count_ops().values()),
+        "ops_count": {k: v for k, v in decomposed_qc.count_ops().items()},
+        "run_time_seconds": run_time
+    }
+    
+    with open(f"{results_dir}/metrics.json", 'w') as f: json.dump(metrics, f, indent=4)
+    print("Các chỉ số đã được lưu vào 'metrics.json':")
+    print(json.dumps(metrics, indent=4))
+
+    # Lưu bản vẽ mạch
+    try:
+        decomposed_qc.draw('mpl', style='iqx').savefig(f"{results_dir}/circuit_diagram.png", dpi=150); plt.close()
+        print("Đã lưu bản vẽ mạch vào 'circuit_diagram.png'")
+    except Exception as e:
+        print(f"Không thể lưu bản vẽ mạch dạng ảnh: {e}")
+        # Lưu dạng text thay thế
+        with open(f"{results_dir}/circuit_diagram.txt", 'w') as f:
+            f.write(decomposed_qc.draw('text', max_length=120))
+        print("Đã lưu bản vẽ mạch dạng text.")
+
+# ==============================================================================
+# PHẦN 3: ĐIỀU KHIỂN CÁC THÍ NGHIỆM BASELINE
+# ==============================================================================
+def main():
+    """
+    Định nghĩa và chạy tất cả các thí nghiệm baseline cần thiết.
+    """
+    # === CHIẾN DỊCH 1: Baseline cho các chế độ vật lý (L=10) ===
+    print("\n\n--- STARTING BASELINE CAMPAIGN 1: PHYSICAL REGIMES (L=10) ---")
+    L_fixed = 10
+    g_points = [0.5, 1.0, 1.5]
+    for g in g_points:
+        run_qiskit_baseline(L=L_fixed, J=1.0, g=g)
+
+    # === CHIẾN DỊCH 2: Baseline cho kiểm tra khả năng mở rộng (g=0.8) ===
+    print("\n\n--- STARTING BASELINE CAMPAIGN 2: SCALABILITY TEST (g=0.8) ---")
+    g_fixed = 0.8
+    L_points = [6, 8, 10]
+    for L in L_points:
+        run_qiskit_baseline(L=L, J=1.0, g=g_fixed)
 
 if __name__ == '__main__':
-    mps_filename = "gs_ising_L10_J1.0_g0.5.h5"
-    
-    target_sv = get_target_statevector(mps_filename)
-    
-    run_qiskit_baseline(target_sv)
+    # Lưu ý: Cần cài đặt `pylatexenc` để vẽ mạch bằng matplotlib
+    try:
+        import pylatexenc
+    except ImportError:
+        print("Cảnh báo: Thư viện 'pylatexenc' chưa được cài đặt.")
+        print("Bản vẽ mạch có thể không đẹp. Hãy chạy: pip install pylatexenc")
+
+    main()
