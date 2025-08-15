@@ -1,13 +1,13 @@
 {
     "method": "Variational (Ours)",
     "L": 10,
-    "g": 0.5,
+    "g": 1.0,
     "num_layers": 8,
     "alpha": 0.1,
     "num_steps": 1000,
-    "final_hybrid_cost": 0.002880752795727471,
-    "final_global_fidelity": 0.9729484302138526,
+    "final_hybrid_cost": 0.01745920805328883,
+    "final_global_fidelity": 0.8331231269123193,
     "depth": 105,
     "num_cnots": 80,
-    "run_time_seconds": 572.4807789325714
+    "run_time_seconds": 720.5087213516235
 }
