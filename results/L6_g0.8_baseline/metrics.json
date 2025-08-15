@@ -1,0 +1,10 @@
+{
+    "method": "Baseline (Qiskit Isometry)",
+    "L": 6,
+    "g": 0.8,
+    "final_global_fidelity": 1.0,
+    "depth": "> 3600s",
+    "num_cnots": "> 3600s",
+    "total_gates": "> 3600s",
+    "run_time_seconds": "> 3600"
+}
