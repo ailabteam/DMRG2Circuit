@@ -1,0 +1,20 @@
+{
+    "method": "Variational (Ours)",
+    "L": 10,
+    "g": 1.0,
+    "num_layers": 8,
+    "alpha": 0.1,
+    "num_steps": 1000,
+    "best_run_fidelity": 0.9375206062144175,
+    "final_hybrid_cost": 0.006354110971988069,
+    "depth": 105,
+    "num_cnots": 80,
+    "run_time_seconds": 586.5121493339539,
+    "fidelities_all_runs": [
+        0.9375206062144175,
+        0.8073044746871821,
+        0.7606921526021724
+    ],
+    "fidelity_mean": 0.8351724111679241,
+    "fidelity_std": 0.07483110723264524
+}

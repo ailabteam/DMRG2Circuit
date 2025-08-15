@@ -18,12 +18,8 @@ pauli_Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
 pauli_Z = np.array([[1, 0], [0, -1]], dtype=complex)
 
 def get_or_create_target_data(L, J, g):
-    """
-    Tạo hoặc đọc file MPS. Trả về cả RDM 1-site và statevector đầy đủ.
-    """
     filename = f"data/gs_ising_L{L}_J{J}_g{g}.h5"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    
     if not os.path.exists(filename):
         print(f"File '{filename}' không tồn tại. Đang tạo mới bằng DMRG...")
         model_params = dict(L=L, J=J, g=g, bc_MPS='finite', conserve=None)
@@ -32,32 +28,22 @@ def get_or_create_target_data(L, J, g):
         dmrg_params = {'mixer': None, 'max_E_err': 1.e-10, 'trunc_params': {'chi_max': 100}}
         info = tenpy.algorithms.dmrg.run(psi, M, dmrg_params)
         hdf5_io.save({"psi": psi}, filename)
-        print(f"Đã tạo và lưu file MPS mới cho L={L}, g={g}.")
-
-    print(f"Đang đọc MPS và tính toán dữ liệu mục tiêu từ file: '{filename}'")
     psi_mps = hdf5_io.load(filename)["psi"]
     psi_mps.canonical_form()
-    
-    target_rdms = {}
+    target_rdms, target_sv = {}, None
     for i in range(L):
-        exp_X = 2 * psi_mps.expectation_value("Sx", [i])[0]
-        exp_Y = 2 * psi_mps.expectation_value("Sy", [i])[0]
-        exp_Z = 2 * psi_mps.expectation_value("Sz", [i])[0]
+        exp_X = 2*psi_mps.expectation_value("Sx",[i])[0]; exp_Y = 2*psi_mps.expectation_value("Sy",[i])[0]; exp_Z = 2*psi_mps.expectation_value("Sz",[i])[0]
         rdm_i = 0.5 * (pauli_I + exp_X*pauli_X + exp_Y*pauli_Y + exp_Z*pauli_Z)
         target_rdms[(i,)] = np.array(rdm_i, requires_grad=False)
-
     full_tensor_array = psi_mps.get_theta(0, psi_mps.L)
     target_sv = full_tensor_array.to_ndarray().flatten()
     target_sv = np.array(target_sv, requires_grad=False)
-    
-    print("Đã tính toán xong RDM 1-site và statevector.")
     return target_rdms, target_sv
 
 # ==============================================================================
 # PHẦN 2: CÁC HÀM TIỆN ÍCH
 # ==============================================================================
 def create_ansatz(params, num_qubits, num_layers):
-    """Định nghĩa cấu trúc mạch."""
     for i in range(num_qubits): qml.Hadamard(wires=i)
     for l in range(num_layers):
         for i in range(num_qubits):
@@ -66,7 +52,6 @@ def create_ansatz(params, num_qubits, num_layers):
         if num_qubits > 1: qml.CNOT(wires=[num_qubits - 1, 0])
 
 def hybrid_cost_function(params, target_rdms, target_sv, alpha, rdm_qnode, state_qnode):
-    """Hàm mất mát lai kết hợp local RDM và global fidelity."""
     circuit_rdms_list = rdm_qnode(params)
     local_loss = 0.0
     for i in range(len(circuit_rdms_list)):
@@ -79,11 +64,9 @@ def hybrid_cost_function(params, target_rdms, target_sv, alpha, rdm_qnode, state
     return local_loss + alpha * global_loss
 
 def build_qiskit_circuit(params, num_qubits, num_layers):
-    """Xây dựng mạch Qiskit tương đương để phân tích."""
     qc = QuantumCircuit(num_qubits); qc.h(range(num_qubits)); qc.barrier()
     for l in range(num_layers):
         for i in range(num_qubits):
-            # Chuyển đổi tường minh params từ PennyLane tensor sang float
             rx, ry, rz = float(params[l,i,0]), float(params[l,i,1]), float(params[l,i,2])
             qc.rx(rx, i); qc.ry(ry, i); qc.rz(rz, i)
         qc.barrier()
@@ -124,14 +107,18 @@ def plot_rdm_comparison(target_rdm, final_rdm, site_index, filename):
     all_vals_imag = np.concatenate([d.flatten() for k, d in data_to_plot.items() if 'Imag' in k])
     vmin_real, vmax_real = all_vals_real.min(), all_vals_real.max()
     vmin_imag, vmax_imag = all_vals_imag.min(), all_vals_imag.max()
-    sns.heatmap(data_to_plot["Target (Real)"], ax=axes[0, 0], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_real, vmax_vmax_real)
+    
+    # Sửa lỗi gõ nhầm ở đây
+    sns.heatmap(data_to_plot["Target (Real)"], ax=axes[0, 0], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_real, vmax=vmax_real)
     axes[0, 0].set_title("Target RDM (Real Part)")
-    sns.heatmap(data_to_plot["Circuit (Real)"], ax=axes[0, 1], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_real, vmax_vmax_real)
+    sns.heatmap(data_to_plot["Circuit (Real)"], ax=axes[0, 1], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_real, vmax=vmax_real)
     axes[0, 1].set_title("Circuit RDM (Real Part)")
-    sns.heatmap(data_to_plot["Target (Imag)"], ax=axes[1, 0], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_imag, vmax_vmax_imag)
+    
+    sns.heatmap(data_to_plot["Target (Imag)"], ax=axes[1, 0], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_imag, vmax=vmax_imag)
     axes[1, 0].set_title("Target RDM (Imaginary Part)")
-    sns.heatmap(data_to_plot["Circuit (Imag)"], ax=axes[1, 1], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_imag, vmax_vmax_imag)
+    sns.heatmap(data_to_plot["Circuit (Imag)"], ax=axes[1, 1], annot=True, fmt=".3f", cmap="vlag", vmin=vmin_imag, vmax=vmax_imag)
     axes[1, 1].set_title("Circuit RDM (Imaginary Part)")
+    
     fig.suptitle(f"RDM Comparison for Qubit {site_index}", fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95]); plt.savefig(filename, dpi=300); plt.close()
 
@@ -178,8 +165,6 @@ def run_variational_experiment(L, J, g, num_layers, num_steps, step_size, alpha,
     print("\n--- Finalizing and Saving Best Run Results ---")
     qiskit_qc = build_qiskit_circuit(best_run_results["params"], L, num_layers)
     ops_count_dict = qiskit_qc.count_ops()
-    
-    # --- SỬA LỖI JSON ---
     summary_metrics = {
         "method": "Variational (Ours)", "L": L, "g": g, "num_layers": num_layers, "alpha": alpha, "num_steps": num_steps,
         "best_run_fidelity": float(best_run_fidelity),
@@ -190,21 +175,14 @@ def run_variational_experiment(L, J, g, num_layers, num_steps, step_size, alpha,
         "fidelity_mean": float(np.mean(all_fidelities)),
         "fidelity_std": float(np.std(all_fidelities))
     }
-    
     with open(f"{results_dir}/summary_metrics.json", 'w') as f: json.dump(summary_metrics, f, indent=4)
     print("\nFinal Summary Metrics:"); print(json.dumps(summary_metrics, indent=4))
-    
-    # Chuyển đổi tensor sang numpy array tiêu chuẩn trước khi lưu
     np.save(f"{results_dir}/best_run_params.npy", best_run_results["params"].numpy())
-
-    # Vẽ và lưu figures
     plot_convergence([float(c) for c in best_run_results["cost_history"]], L, g, num_layers, f"{results_dir}/best_run_convergence.png")
     plot_probabilities(target_sv, best_run_results["final_state"], L, g, best_run_fidelity, f"{results_dir}/best_run_probabilities.png")
-    
     final_rdms = rdm_circuit(best_run_results["params"])
     qubit_to_plot = L // 2
     plot_rdm_comparison(target_rdms[(qubit_to_plot,)], final_rdms[qubit_to_plot], qubit_to_plot, f"{results_dir}/best_run_rdm_comparison.png")
-    
     qiskit_qc.draw('mpl', style='iqx').savefig(f"{results_dir}/best_run_circuit.png", dpi=150); plt.close()
     print(f"Đã lưu tất cả kết quả và figures vào thư mục: '{results_dir}'")
 
@@ -212,16 +190,11 @@ def run_variational_experiment(L, J, g, num_layers, num_steps, step_size, alpha,
 # PHẦN 5: ĐIỀU KHIỂN CHIẾN DỊCH
 # ==============================================================================
 def main():
-    """
-    Định nghĩa và chạy tất cả các thí nghiệm cho bài báo.
-    """
     print("\n\n--- STARTING CAMPAIGN 1: PHYSICAL REGIMES (L=10) ---")
     L_fixed = 10
     g_points = [0.5, 1.0, 1.5]
     for g in g_points:
         run_variational_experiment(L=L_fixed, J=1.0, g=g, num_layers=8, num_steps=1000, step_size=0.05, alpha=0.1, num_runs=3)
-        # run_baseline_experiment(L=L_fixed, J=1.0, g=g)
-
     print("\n\n--- STARTING CAMPAIGN 2: SCALABILITY TEST (g=0.8) ---")
     g_fixed = 0.8
     L_points = [6, 8, 10]
@@ -229,16 +202,12 @@ def main():
         num_layers = 2 * L - 8 if L > 6 else 4
         num_steps = 200 * (L - 4)
         run_variational_experiment(L=L, J=1.0, g=g_fixed, num_layers=num_layers, num_steps=num_steps, step_size=0.05, alpha=0.1, num_runs=3)
-        # run_baseline_experiment(L=L, J=1.0, g=g_fixed)
-
     print("\n\n--- ALL EXPERIMENTS COMPLETED ---")
-
 
 if __name__ == '__main__':
     try:
-        import pylatexenc; import seaborn;
+        import pylatexenc; import seaborn; import pandas
     except ImportError as e:
         print(f"Warning: A plotting library is missing ({e}). Figures may not be generated.")
-        print("Please run: pip install seaborn pylatexenc")
-    
+        print("Please run: pip install seaborn pandas pylatexenc")
     main()

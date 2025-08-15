@@ -5,10 +5,16 @@
     "num_layers": 8,
     "alpha": 0.1,
     "num_steps": 1000,
-    "best_run_fidelity": 0.9920234153447459,
-    "final_hybrid_cost": 0.000860841995966426,
+    "best_run_fidelity": 0.9731943835304804,
+    "final_hybrid_cost": 0.0030314755953089424,
     "depth": 105,
     "num_cnots": 80,
-    "run_time_seconds": 647.4835181236267,
+    "run_time_seconds": 609.0146148204803,
     "fidelities_all_runs": [
-        
+        0.9731943835304804,
+        0.9395730561947553,
+        0.968647598928197
+    ],
+    "fidelity_mean": 0.9604716795511442,
+    "fidelity_std": 0.014893682244474083
+}
